@@ -11,7 +11,7 @@ file_name <- "311306435_Assignment_1.R"
 ####################################
 
 pass <- TRUE
-setwd("/Users/Yuval-PC/Desktop/simulation/assignment_1")
+setwd("/Users/Yuval-PC/Desktop/simulation/simulation/assignment_1")
 # Check that the code does not contain "rgeom" nor "rexp"
 require(stringr)
 strings_not_allowed <- c("library", "require", 
