@@ -64,7 +64,6 @@ a1q3 <- function(n){
   X <- X[1:min(n,counter)]
   U1 <- U1[1:min(n,counter)]
   U2 <- U2[1:min(n,counter)]
-  print(counter)
   while (counter < n){
     u1 <- runif(1, 0, m)
     u2 <- runif(1, a, b)
