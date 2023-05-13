@@ -20,14 +20,18 @@ a2q1 <- function(n, mu, Sigma){
 
 
 # Q2
+set.seed(1)
 a2q2 <- function(n, m, a, b, sd, sd.0){
-  Y0 <- rnorm(n, 0, sd.0)
-  Y <- cbind(Y0)
-  eps <- matrix(rnorm(n * (m+1), 0, sd), nrow=n)
-  for (i in 1:m){
-    Y <- cbind(Y, a*Y[1:n,i] + b*eps[1:n,i] + eps[1:n,i+1])
+  arma <-function(a, b){
+    Y0 = rnorm(1, 0, sd.0)
+    eps <- rnorm(m+1, 0, sd)
+    eps <- filter(eps, c(1,b), sides=1L)
+    eps <- eps[2:(m+1)]
+    Y <- filter(eps, a, method = "recursive", init=Y0)
+    return(Y)
   }
-  return(Y[1:n, 1:m+1])
+  Y_mat <- t(replicate(n, arma(a,b)))
+  return(Y_mat)
 }
 
 # Q3
