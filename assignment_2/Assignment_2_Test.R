@@ -6,7 +6,8 @@ rm(list=ls())
 # RUN THIS CODE IN THE SAME DIRECTORY WHERE YOUR FILE IS LOCATED
 # REPLACE THE NAME TO THE NAME OF YOUR FILE
 
-file_name <- "123456789_Assignment_2.R" 
+file_name <- "311306435_Assignment_2.R" 
+setwd("/Users/Yuval-PC/Desktop/simulation/simulation/assignment_2")
 
 ####################################
 
