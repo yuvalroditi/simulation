@@ -2,6 +2,7 @@
 # Name: Yuval Roditi  
 # I.D. Number: 311306435
 
+#Q1
 a3q1 <- function(x, n, p0, p1, N){
   Y <- rbinom(N, n, p1)
   phi <- dbinom(Y, n, p0)
@@ -14,7 +15,7 @@ a3q1 <- function(x, n, p0, p1, N){
 }
 
 
-# Q2: Replace "return(NA)" by your code
+# Q2
 a3q2 <- function(f, gen.X, g, m, N){
   input <- gen.X(N)
   X <- f(input)
@@ -24,7 +25,7 @@ a3q2 <- function(f, gen.X, g, m, N){
   return(Z)
 }
 
-# Q3: Replace "return(NA)" by your code
+# Q3
 a3q3 <- function(X, m, B){
   mu_hat <- mean(X)
   sd_hat <- sd(X)
