@@ -10,52 +10,32 @@ a4q1 <- function(x, f.alpha, f.lambda, start, N){
   theta <- matrix(nrow=(N+1), ncol=2)
   theta[1,1] <- alpha
   theta[1,2] <- lambda
-  # likelihood <- function(al, lm, x){
-  #   return ((al^n)*(lm^(n*al))*prod(x^(al-1))*exp(-lm*sum(x^al)))
-  # }
-  ll <- function(al, lm, x){
-    return (n*log(al) + (n*al)*log(lm) + (al-1)*sum(log(x)) - (lm)*sum(x^al))
+  # log likelihood:
+  ll <- function(alpha, lambda){
+    return (n*log(alpha) + (n*alpha)*log(lambda) + (alpha-1)*sum(log(x)) - (lambda)*sum(x^alpha))
   }
-  ratio_func <- function(al, lm, al_til, lm_til, x){
-    ll_theta_tilde <- ll(al_til, lm_til, x)
-    ll_theta <- ll(al, lm, x)
+  ratio_func <- function(){
+    ll_theta_tilde <- ll(alpha.tilde, lambda.tilde)
+    ll_theta <- ll(alpha, lambda)
     ll_ratio <- ll_theta_tilde - ll_theta
-    tran_al_al_til = dexp(al_til, rate = (1/al))
-    tran_al_til_al = dexp(al, rate = (1/al_til))
-    tran_lm_lm_til = dexp(lm_til, rate = (1/lm))
-    tran_lm_til_lm = dexp(lm, rate = (1/lm_til))
-    # print("--up---")
-    # print(f.alpha (al_til))
-    # print(f.lambda(lm_til))
-    # print(exp(ll_ratio))
-    # print(tran_al_til_al)
-    # print(tran_lm_til_lm)
-    # print("--down--")
-    # print(f.alpha(al))
-    # print(f.lambda(lm))
-    # print(tran_al_al_til)
-    # print(tran_lm_lm_til)
-    numerator <- f.alpha (al_til) *f.lambda(lm_til) * exp(ll_ratio)* tran_al_til_al * tran_lm_til_lm
-    denumerator <- f.alpha(al) * f.lambda(lm) * tran_al_al_til * tran_lm_lm_til  
-    # print("numerator:")
-    # print(numerator)
-    # print("denumerator:")
-    # print(denumerator)
+    tran_al_al_til = dexp(alpha.tilde, rate = (1/alpha))
+    tran_al_til_al = dexp(alpha, rate = (1/alpha.tilde))
+    tran_lm_lm_til = dexp(lambda.tilde, rate = (1/lambda))
+    tran_lm_til_lm = dexp(lambda, rate = (1/lambda.tilde))
+    numerator <- f.alpha (alpha.tilde) *f.lambda(lambda.tilde) * exp(ll_ratio)* tran_al_til_al * tran_lm_til_lm
+    denumerator <- f.alpha(alpha) * f.lambda(lambda) * tran_al_al_til * tran_lm_lm_til  
     if (is.nan(numerator)){
       ratio <- 1
     }
     else{
       ratio <- numerator/denumerator  
     }
-    
-    # print("----ratio---")
-    # print(ratio)
     return (ratio)
   }
   for (i in 2:(N+1)){
     alpha.tilde <- rexp(1, 1/alpha)
     lambda.tilde <- rexp(1, 1/lambda)
-    ratio <- min(ratio_func(alpha, lambda, alpha.tilde, lambda.tilde, x), 1)
+    ratio <- min(ratio_func(), 1)
     U <- runif(1)
     if (U <= ratio){
       alpha <- alpha.tilde
