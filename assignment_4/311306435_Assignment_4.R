@@ -1,8 +1,8 @@
 # Assignment 4
-# Name: Yuval
+# Name: Yuval Roditi
 # I.D. Number: 311306435
 
-# Q1: Replace "return(NA)" by your code
+# Q1
 a4q1 <- function(x, f.alpha, f.lambda, start, N){
   n <- length(x)
   alpha <- start[1] # alpha_0
@@ -54,7 +54,7 @@ a4q1 <- function(x, f.alpha, f.lambda, start, N){
   return(theta)
 }
 
-# Q2: Replace "return(NA)" by your code
+# Q2
 a4q2 <- function(M, beta, Y, sigma, burn.in=100){
   dim_x <- dim(Y)[1]
   dim_y <- dim(Y)[2]
@@ -97,31 +97,46 @@ a4q2 <- function(M, beta, Y, sigma, burn.in=100){
 }
 
 
-L <- 51
-X <- matrix(-1,L,L)
-ij <- expand.grid(seq(L)-25,seq(L)-25)
-X[(rowSums(ij^2) <= 15^2) & 
-    (rowSums(ij^2) >= 10^2)] <- 1
-image(1:L, 1:L, X)
-
-# Add noise
-sigma <- 2
-Y <- X + rnorm(prod(dim(X)), sd = sigma)
-image(1:L, 1:L, Y)
-
-
-
-
-# De-noise the image
-beta <- 0.5
-M <- 1e2
-prob <- a4q2(M, beta, Y, sigma)
-prob <- RB(M, beta, Y, sigma)
-image(1:L, 1:L, Y)
-image(1:L, 1:L, prob)
-
-
 # Q3: Replace "return(NA)" by your code
 a4q3 <- function(y, x, theta, param, n.sweep){
-  return(NA)
+  n < length(x)
+  mu_0 <- param[1]
+  sigma_0 <- param[2]
+  mu_1 <- param[3]
+  sigma_1 <- param[4]
+  r <- param[5]
+  lambda <- param[6]
+  b0 <- theta[1]
+  b1 <- theta[2]
+  v <- theta[3]
+  theta <- data.frame(matrix(nrow=(n.sweep+1), ncol=3))
+  theta[1,1] <- b0
+  theta[1,2] <- b1
+  theta[1,3] <- v
+
+  rand_b0 <- function(b1, v) {
+    b_0_mean <- (mu_0/sigma_0 + sum(y-b1*x)/v)/(1/sigma_0 + n/v)
+    b_0_var <- 1/(1/sigma_0+n/v)
+    return(rnorm(1, b_0_mean, sqrt(b_0_var)))
+  }
+
+  rand_b1 <- function(b0, v){
+    b_1_mean <- (mu_1/sigma_1+sum(x*(y-b0))/v)/(1/sigma_1+sum(x^2/v))
+    b_1_var <- 1/(1/sigma_1 + sum(x^2/v))
+    return(rnorm(1, b_1_mean, sqrt(b_1_var)))
+  }
+
+  rand_v <- function(b0, b1){
+    return(1/rgamma(1, shape=(r+n/2), rate=(lambda+sum((y-b0-b1*x)^2/2))))
+  }
+  for (i in 2:(n.sweep+1)) {
+    
+    theta[i,1] <- rand_b0(theta[i-1,2], theta[i-1,3])
+    
+    theta[i,2] <- rand_b1(theta[i,1], theta[i-1,3])
+    
+    theta[i,3] <- rand_v(theta[i,1], theta[i,2])
+    
+  }
+  return(data.frame(theta))
 }
