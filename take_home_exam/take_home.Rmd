@@ -1,0 +1,115 @@
+---
+title: '311306435'
+output: pdf_document
+date: '2023-07-18'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+```{}
+install.packages("DirichletReg")
+install.packages("scatterplot3d") # Install
+install.packages("MASS")
+
+
+
+library(Formula)
+library(DirichletReg)
+library("scatterplot3d") # load
+library(MASS)
+
+
+# beta_func <- function(alphas){
+#   alphas_gamma_sum <- gamma(sum(alphas))
+#   alphas_gamma_mul <-1
+#   for (i in 1:length(alphas)){
+#     alphas_gamma_mul <- alphas_gamma_mul * gamma(alphas[i])
+#   }
+#   return(alphas_gamma_mul/alphas_gamma_sum)
+# }
+
+# obs_amount <- dim(observations)[1]
+  # alphas <- t(replicate(obs_amount, prior_sampler(rates)))
+  # likelihood <- ddirichlet(observations, alphas)
+  # priors <- dexp(alphas)
+  # posterior <- numeric(length=obs_amount)
+  # for (i in (1:obs_amount))
+  #   posterior[i] <- prod(alphas[i]) * prod(likelihood[i])
+  # df <- data.frame(
+  #   x = c(alphas[,1]),
+  #   y = c(alphas[,2]),
+  #   z = c(posterior)
+  # )
+  # maximal <-df[which.max(df$z),3]
+  # return(df)
+
+```
+
+
+Question 1
+
+```{r pressure, echo=FALSE}
+prior_sampler <-function(rates){
+  k <- length(rates)
+  prior_vec <- rexp(k, rates)
+  return(prior_vec)
+}
+
+normal_est <- function(observations, rates){
+  objective_function<-function(alphas){
+    likelihood <- ddirichlet(observations, alphas, log = TRUE)
+    priors <- dexp(rates, log = TRUE)
+    posterior <- sum(likelihood) + sum(priors)
+    return (posterior)
+  }
+  alpha_len <- length(rates)
+  start_alphas <- numeric(alpha_len) + 1
+  lower_bounds <- numeric(alpha_len) + 0.00001
+  optim_result <- optim(start_alphas, objective_function, method = "L-BFGS-B", lower=lower_bounds)
+  print(optim_result)
+  optim_params <- optim_result$par
+  mean <- optim_params
+  n <- dim(observations)[1]
+  k <- length(mean)
+  hessian <- (-n)*(diag(trigamma(mean)) + matrix(-trigamma(sum(mean)), nrow = k, ncol = k))
+  cov_mat <- ginv(-hessian)
+  return(list(mean, cov_mat))
+}
+
+
+q1 <-function(n, observations, rates){
+  estimators <- normal_est(observations, rates)
+  mean <- unlist(estimators[1])
+  print(mean)
+  k <- length(mean)
+  cov_mat <- matrix(unlist(estimators[2]), ncol = k, nrow=k)
+  print(cov_mat)
+  samples <- mvrnorm(n, mean, cov_mat)
+  return (samples)
+}
+mat <- as.matrix(read.table("Q3.txt.Q", sep=" "))
+# mat <- matrix(c(0.2,0.3,0.2,0.1,0.2,0.3,0.4,0.4,0.1,0.1,0.1,0.8), nrow=4, ncol=3)
+print(q1(20, mat, c(0.1,0.2,0.15)))
+#scatterplot3d(df$x, df$y, df$z)
+```
+
