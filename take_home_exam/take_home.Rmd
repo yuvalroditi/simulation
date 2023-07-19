@@ -30,9 +30,10 @@ plot(pressure)
 install.packages("DirichletReg")
 install.packages("scatterplot3d") # Install
 install.packages("MASS")
+install.packages("MCMCprecision")
 
 
-
+require(MCMCprecision)
 library(Formula)
 library(DirichletReg)
 library("scatterplot3d") # load
@@ -69,10 +70,82 @@ library(MASS)
 Question 1
 
 ```{r pressure, echo=FALSE}
+
+
+# auxiliary functions
+log.lik.dir <- function(X, alpha, delta){
+  l <- DirichletReg::ddirichlet(X, alpha, log = TRUE)
+  return(sum(l) - sum(alpha*delta) + sum(log(delta)))
+}
+
+grad.log.lik.dir <- function(X, alpha, delta){
+  term1 <- colSums(log(X))
+  term2 <- nrow(X)*(digamma(sum(alpha))-digamma(alpha))
+  return(term1 + term2 - delta)
+}
+
+hess.log.lik.dir <- function(X, alpha, delta){
+  term1 <- trigamma(sum(alpha))*matrix(1,length(alpha),length(alpha))
+  term2 <- diag(trigamma(alpha))
+  return(nrow(X)*(term1 - term2))
+}
+
+max.log.lik.dir <- function(X, delta, precision = 0.001, max.iter = 100){
+  al <- fit_dirichlet(X)$alpha # Initiate
+  iter <- d <- 1
+  while ((d > precision) & (iter <= max.iter)){
+    l <- log.lik.dir(X, al, delta)
+    W <- solve(hess.log.lik.dir(X, al, delta))
+    v <- grad.log.lik.dir(X, al, delta)
+    al <- as.vector(al - W %*% v)
+    d <- abs(log.lik.dir(X, al, delta)-l)
+    iter <- iter + 1
+  }
+  if(iter >= max.iter) warning("Stopped before convergence")
+  return(list(alpha.hat = al,
+              log.lik.hat = log.lik.dir(X, al, delta),
+              gradient = v,
+              hessian = hess.log.lik.dir(X, al, delta),
+              number.iter = iter,
+              log.lik.dif = d))
+}
+
+# Producing the Gaussian approximation
+sim.dir <- function(n, alpha_prior, obs){
+  #delta <- 1/alpha_prior
+  delta <- alpha_prior
+  out <- max.log.lik.dir(obs, delta)
+  print(out)
+  mu <- out$alpha.hat
+  Sigma <- -solve(out$hessian)
+  A <- MASS::mvrnorm(n, mu, Sigma)
+  return(A)
+}
+
+
 prior_sampler <-function(rates){
   k <- length(rates)
   prior_vec <- rexp(k, rates)
   return(prior_vec)
+}
+
+likelihood <- function(observations, )
+
+optimize <- function(observations, rates, tol = 0.0001, max_iter = 1000){
+  x_t <- fit_dirichlet(observations)$alpha
+  f_prev <- likelihood() 
+  diff <- Inf
+  for(i in range(1:max_iter)){
+    if (diff > tol){
+      
+      H <- solve(hessian())
+      g <- grad()
+      x_t <- as.vector(x_t - H %*% grad) 
+      f_new <- likelihood()
+      diff <- abs(f_new - f_prev)
+      f_prev <- f_new
+    }
+  }
 }
 
 normal_est <- function(observations, rates){
@@ -83,9 +156,11 @@ normal_est <- function(observations, rates){
     return (posterior)
   }
   alpha_len <- length(rates)
-  start_alphas <- numeric(alpha_len) + 1
+  start_alphas <- fit_dirichlet(observations)$alpha # Initiate
   lower_bounds <- numeric(alpha_len) + 0.00001
-  optim_result <- optim(start_alphas, objective_function, method = "L-BFGS-B", lower=lower_bounds)
+  # optim_result <- optim(start_alphas, objective_function, method = "L-BFGS-B",
+  #                       lower=lower_bounds)
+  optim_result <- optim(start_alphas, objective_function, method = "SANN")
   print(optim_result)
   optim_params <- optim_result$par
   mean <- optim_params
@@ -110,6 +185,9 @@ q1 <-function(n, observations, rates){
 mat <- as.matrix(read.table("Q3.txt.Q", sep=" "))
 # mat <- matrix(c(0.2,0.3,0.2,0.1,0.2,0.3,0.4,0.4,0.1,0.1,0.1,0.8), nrow=4, ncol=3)
 print(q1(20, mat, c(0.1,0.2,0.15)))
+
+
+print(sim.dir(20, c(0.1,0.2,0.15), mat))
 #scatterplot3d(df$x, df$y, df$z)
 ```
 

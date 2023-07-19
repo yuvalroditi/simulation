@@ -1,0 +1,171 @@
+---
+title: "Home_exam"
+output: html_document
+date: "2023-07-18"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+install.packages('Dirichlet')
+
+```
+
+
+```{r}
+
+require(MCMCprecision)
+require(MASS)
+require(MVTests)
+require(mvnTest)
+
+
+```
+
+
+```{r}
+install.packages('DirichletReg')
+```
+
+```{r}
+require(DirichletReg)
+
+```
+Task 1:
+
+```{r}
+
+# auxiliary functions
+log.lik.dir <- function(X, alpha, delta){
+  l <- DirichletReg::ddirichlet(X, alpha, log = TRUE)
+  return(sum(l) - sum(alpha*delta) + sum(log(delta)))
+}
+
+grad.log.lik.dir <- function(X, alpha, delta){
+  term1 <- colSums(log(X))
+  term2 <- nrow(X)*(digamma(sum(alpha))-digamma(alpha))
+  return(term1 + term2 - delta)
+}
+
+hess.log.lik.dir <- function(X, alpha, delta){
+  term1 <- trigamma(sum(alpha))*matrix(1,length(alpha),length(alpha))
+  term2 <- diag(trigamma(alpha))
+  return(nrow(X)*(term1 - term2))
+}
+
+max.log.lik.dir <- function(X, delta, precision = 0.001, max.iter = 100){
+  al <- fit_dirichlet(X)$alpha # Initiate
+  iter <- d <- 1
+  while ((d > precision) & (iter <= max.iter)){
+    l <- log.lik.dir(X, al, delta)
+    W <- solve(hess.log.lik.dir(X, al, delta))
+    v <- grad.log.lik.dir(X, al, delta)
+    al <- as.vector(al - W %*% v)
+    d <- abs(log.lik.dir(X, al, delta)-l)
+    iter <- iter + 1
+  }
+  if(iter >= max.iter) warning("Stopped before convergence")
+  return(list(alpha.hat = al,
+              log.lik.hat = log.lik.dir(X, al, delta),
+              gradient = v,
+              hessian = hess.log.lik.dir(X, al, delta),
+              number.iter = iter,
+              log.lik.dif = d))
+}
+
+# Producing the Gaussian approximation
+sim.dir <- function(n, alpha_prior, obs){
+  delta <- 1/alpha_prior
+  out <- max.log.lik.dir(obs, delta)
+  mu <- out$alpha.hat
+  Sigma <- -solve(out$hessian)
+  A <- MASS::mvrnorm(n, mu, Sigma)
+  return(A)
+}
+
+```
+
+```{r}
+# use the function
+alpha_prior <- c(6,10,5,3)
+obs <- rdirichlet(150, alpha_prior)
+
+
+sim.dir(1, alpha_prior, obs)
+
+```
+
+Task 2:
+
+```{r}
+
+r.alpha.dirichlet <- function(n, x, alpha_rates,
+                           n.initial.c = 100,
+                           max.iter = 10000,
+                           lower = c(0,0),
+                           upper = c(Inf,Inf)){
+  # Estimating the mu and Sigma for the Gaussian proposals
+  delta <- 1/alpha_rates
+  out <- max.log.lik.dir(x, delta)
+  mu <- out$alpha.hat
+  Sigma <- -solve(out$hessian)
+  P <- -out$hessian
+  d <- 0.5*log(det(P)) - log(2*pi)
+  
+  # The (log) Gaussian density
+  normal.log.g <- function(alpha, mu, P, d){
+    -0.5 * drop(t(alpha-mu) %*% P %*% (alpha-mu)) + d
+  }
+  
+
+  # Producing an initial estimate of c
+  #al <- mvrnorm(n.initial.c,mu,Sigma)
+  al <- sim.dir(n.initial.c, alpha_rates, x)
+  f <- apply(al, 1, function(al) log.lik.dir(x, al, delta))
+  g <- apply(al, 1, function(al) normal.log.g(al,mu,P,d))
+  c.est <- initial.c <- max(f - g)
+
+  Alpha <- matrix(NA,n,length(alpha_rates))
+  n.iter <- 0
+  
+  for(i in 1:n){
+    accept <- FALSE
+    while((!accept) & (n.iter < max.iter)){
+      #al <- mvrnorm(1,mu,Sigma)
+      al <- sim.dir(1, alpha_rates, x)
+      if (all(al > lower) & all(al < upper)){
+        f <- log.lik.dir(x, al, delta)
+        g <- normal.log.g(al,mu,P,d)
+        e <- -rexp(1)
+        accept <- e <= f - g - c.est
+        c.est <- max(c.est, f - g)
+      }
+      
+      n.iter <- n.iter + 1
+      if (n.iter %% round(max.iter/4) == 0) print (c(n.iter,i,c.est))
+      if (n.iter >= max.iter)
+        stop(paste("Reached max.ietr = ", max.iter,
+                    ". Number of simulations = ", i, sep = ""))
+    }
+#    print(c(n.iter, c.est, al))
+    Alpha[i,] <- al
+  }
+  c.est = c(initial.c, c.est)
+  names(c.est) <- c("initial", "final")
+  return(list(Alpha = Alpha,
+              c.est = c.est,
+              n.iter = n.iter))
+}
+
+```
+
+```{r,message = FALSE,}
+#options(warn = -1)
+#out <- r.alpha.dirichlet(100, obs, alpha_prior)
+suppressWarnings({
+  out <- r.alpha.dirichlet(100, obs, alpha_prior)
+})
+out$Alpha
+```
