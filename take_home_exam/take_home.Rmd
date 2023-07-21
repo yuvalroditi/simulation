@@ -117,6 +117,7 @@ sim.dir <- function(n, alpha_prior, obs){
   out <- max.log.lik.dir(obs, delta)
   print(out)
   mu <- out$alpha.hat
+  print(-solve(out$hessian))
   Sigma <- -solve(out$hessian)
   A <- MASS::mvrnorm(n, mu, Sigma)
   return(A)
@@ -129,45 +130,53 @@ prior_sampler <-function(rates){
   return(prior_vec)
 }
 
-likelihood <- function(observations, )
+objective <- function(observations, rates, alphas){
+  log_likelihood <- sum(ddirichlet(observations, alphas, log = TRUE))
+  log_priors <- sum(dexp(rates, log = TRUE))
+  log_posterior <- log_likelihood + log_priors
+  return (log_posterior)
+}
+  
+hessian <- function(alphas, n){
+  k <- length(alphas)
+  h <- (-n)*(diag(trigamma(alphas)) + matrix(-trigamma(sum(alphas)), 
+                                                   nrow = k, ncol = k))
+  return (h)
+}
 
-optimize <- function(observations, rates, tol = 0.0001, max_iter = 1000){
-  x_t <- fit_dirichlet(observations)$alpha
-  f_prev <- likelihood() 
+grad <- function(observation, rates, alphas){
+  n <- dim(observation)[1]
+  log_xj <- colSums(log(observation))
+  log_rates <- log(rates)
+  return(log_xj - log_rates -n * (digamma(alphas)-digamma(sum(alphas))))
+}
+
+opt <- function(observations, rates, tol = 0.001, max_iter = 1000){
+  alpha_t <- fit_dirichlet(observations)$alpha
+  f_prev <- objective(observations, rates, alpha_t) 
   diff <- Inf
-  for(i in range(1:max_iter)){
+  for(i in 1:max_iter){
     if (diff > tol){
-      
-      H <- solve(hessian())
-      g <- grad()
-      x_t <- as.vector(x_t - H %*% grad) 
-      f_new <- likelihood()
+      print(i)
+      n <- dim(observations)[1]
+      H <- solve(hessian(alpha_t, n))
+      g <- grad(observations, rates, alpha_t)
+      alpha_t <- as.vector(alpha_t - H %*% g) 
+      f_new <- objective(observations, rates, alpha_t)
       diff <- abs(f_new - f_prev)
       f_prev <- f_new
+    } else {
+      return (alpha_t)
     }
   }
 }
 
 normal_est <- function(observations, rates){
-  objective_function<-function(alphas){
-    likelihood <- ddirichlet(observations, alphas, log = TRUE)
-    priors <- dexp(rates, log = TRUE)
-    posterior <- sum(likelihood) + sum(priors)
-    return (posterior)
-  }
-  alpha_len <- length(rates)
-  start_alphas <- fit_dirichlet(observations)$alpha # Initiate
-  lower_bounds <- numeric(alpha_len) + 0.00001
-  # optim_result <- optim(start_alphas, objective_function, method = "L-BFGS-B",
-  #                       lower=lower_bounds)
-  optim_result <- optim(start_alphas, objective_function, method = "SANN")
-  print(optim_result)
-  optim_params <- optim_result$par
-  mean <- optim_params
+  alphas <- opt(observations, rates)
+  mean <- alphas
   n <- dim(observations)[1]
-  k <- length(mean)
-  hessian <- (-n)*(diag(trigamma(mean)) + matrix(-trigamma(sum(mean)), nrow = k, ncol = k))
-  cov_mat <- ginv(-hessian)
+  h <- hessian(alphas, n)
+  cov_mat <- ginv(-h)
   return(list(mean, cov_mat))
 }
 
