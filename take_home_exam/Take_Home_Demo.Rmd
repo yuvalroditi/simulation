@@ -1,0 +1,298 @@
+---
+title: "Take Home (Demo)"
+author: "Benny Yakir"
+date: "2023-01-02"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Preliminaries
+In this (demo) assignment we investigate methods for simulation from the posterior distribution in the Beta model. The prior distribution over the parameters is assumed to be exponential.
+
+For this investigation we implement 4 external packages: `MCMCprecision`, `MASS`, `MVTests`, and `mvnTest`.
+```{r externals, message = FALSE,}
+require(MCMCprecision)
+require(MASS)
+require(MVTests)
+require(mvnTest)
+```
+
+# Task 1
+The first task involves a Gaussian approximation of the posterior distribution. The maximization of the joint likelihood is required, and also the hessian matrix.
+
+## Auxiliary functions
+The function `log.lik` computes the joint likelihood of the data and the parameters:
+```{r Task1.1}
+log.lik <- function(x, alpha, delta){
+  l <- dbeta(x, alpha[1], alpha[2], log = TRUE)
+  return(sum(l) - sum(alpha*delta) + sum(log(delta)))
+} 
+```
+
+
+The function `grad.log.lik` computes the gradient, with respect to $\alpha$, of the joint likelihood:
+```{r Task1.2}
+grad.log.lik <- function(x, alpha, delta){
+  term1 <- c(sum(log(x)),sum(log(1-x))) 
+  term2 <- length(x)*(digamma(sum(alpha))-digamma(alpha))
+  return(term1 + term2 - delta)
+}
+```
+
+The function `hess.log.lik` computes the hessian matrix:
+```{r Task1.3}
+hess.log.lik <- function(x, alpha, delta){
+  term1 <- trigamma(sum(alpha))*matrix(1,2,2)
+  term2 <- diag(trigamma(alpha))
+  return(length(x)*(term1 - term2))
+} 
+```
+
+
+The function `max.log.lik` implements the Newton-Raphson algorithm in order to maximize the joint likelihood. The algorithm is initiated at the MLE of the observations, which is computed by `fit_dirichlet (MCMCprecision)`. The criteria for the convergence of the algorithm is based on the absolute change in the value of the joint likelihood:
+```{r Task1.4}
+max.log.lik <- function(x, delta, 
+                        precision = 0.001,
+                        max.iter = 100){
+  X <- cbind(x,1-x)
+  al <- fit_dirichlet(X)$alpha # Initiate
+  iter <- d <- 1
+  while ((d > precision) & (iter <= max.iter)){
+    l <- log.lik(x, al, delta)
+    W <- solve(hess.log.lik(x, al, delta))
+    v <- grad.log.lik(x, al, delta)
+    al <- as.vector(al - W %*% v)
+    d <- abs(log.lik(x, al, delta)-l)
+    iter <- iter + 1
+  }
+  if(iter >= max.iter) warning("Stopped before convergence")
+  return(list(alpha.hat = al,
+              log.lik.hat = log.lik(x, al, delta),
+              gradient = v,
+              hessian = hess.log.lik(x, al, delta),
+              number.iter = iter,
+              log.lik.dif = d))
+}
+```
+
+## Producing the Gaussian approximation 
+We demonstrate the production of a sample from the Gaussian approximation of the posterior distribution using simulated data. The simulated data involves 150 observations from the Beta distribution with $\alpha_1 = 6$ and $\alpha_2 = 10$, which is also the expectations of the prior distribution.
+```{r Task1.5}
+x <- rbeta(150,6,10)
+delta <- 1/c(6,10)
+out <- max.log.lik(x, delta)
+mu <- out$alpha.hat
+Sigma <- -solve(out$hessian)
+rho <- Sigma[1,2]/sqrt(prod(diag(Sigma)))
+A <- mvrnorm(10^3,mu,Sigma)
+image(kde2d(A[,1],A[,2], n = 50))
+```
+
+A heat map plot of the posterior density is presented above. Notice the high correlation between the two components of the posterior distribution. (The computed correlation is `r round(rho,3)`).   
+
+We save the approximate expectation (`mu`) and the variance matrix (`Sigma`) of the posterior distribution. Notice that when a single simulation is required then the output is a vector, not a matrix:
+```{r Task1.6}
+mvrnorm(1,mu,Sigma)
+```
+
+
+# Task 2
+In Task 2 we implement the empirical supremum rejection sampling method in order to simulate from the posterior distribution. Proposals are taken from the Gaussian approximation of the posterior distribution.
+
+We use a preliminary sample from the proposal distribution in order to initiate the value of the supreme. The default size of this sample is 100. 
+
+We also allow the restriction of the posterior distribution to a box. The box is set with the arguments `lower` and `upper`.
+```{r Task2.1}
+r.alpha.normal <- function(n, x, delta,
+                           n.initial.c = 100,
+                           max.iter = 10^6,
+                           lower = c(0,0),
+                           upper = c(Inf,Inf)){
+  # Estimating the mu and Sigma for the Gaussian proposals
+  out <- max.log.lik(x, delta)
+  mu <- out$alpha.hat
+  Sigma <- -solve(out$hessian)
+  P <- -out$hessian
+  d <- 0.5*log(det(P)) - log(2*pi)
+  
+  # The (log) Gaussian density
+  normal.log.g <- function(alpha, mu, P, d){
+    -0.5 * drop(t(alpha-mu) %*% P %*% (alpha-mu)) + d
+  }
+
+  # Producing an initial estimate of c
+  al <- mvrnorm(n.initial.c,mu,Sigma)
+  f <- apply(al, 1, function(al) log.lik(x, al, delta))
+  g <- apply(al, 1, function(al) normal.log.g(al,mu,P,d))
+  c.est <- initial.c <- max(f - g)
+
+  Alpha <- matrix(NA,n,2)
+  n.iter <- 0
+  for(i in 1:n){
+    accept <- FALSE
+    while((!accept) & (n.iter < max.iter)){
+      al <- mvrnorm(1,mu,Sigma)
+      if (all(al > lower) & all(al < upper)){
+        f <- log.lik(x, al, delta)
+        g <- normal.log.g(al,mu,P,d)
+        e <- -rexp(1)
+        accept <- e <= f - g - c.est
+        c.est <- max(c.est, f - g)
+      }
+      n.iter <- n.iter + 1
+      if (n.iter %% round(max.iter/4) == 0) print (c(n.iter,i,c.est))
+      if (n.iter >= max.iter)
+        stop(paste("Reached max.ietr = ", max.iter,
+                    ". Number of simulations = ", i, sep = ""))
+    }
+#    print(c(n.iter, c.est, al))
+    Alpha[i,] <- al
+  }
+  c.est = c(initial.c, c.est)
+  names(c.est) <- c("initial", "final")
+  return(list(Alpha = Alpha,
+              c.est = c.est,
+              n.iter = n.iter))
+}
+```
+Notice that the internal function `normal.log.g` computes the log of the Gaussian density. Relevant constants are introduced as arguments in order to save the need to recompute them in each iteration.
+
+A printout is produced in order to control iterations. The printout is activated if the number of required iterations is at least 25% of the maximal number.
+
+The output of the function is a list that contains a matrix with the simulated posterior (`Alpha`), the number of iteration that were used (`n.iter`), and a vector with the initial and final values of the estimated supreme (`c.est`).
+
+Let us implement this function on the data that was simulated in Task 1:
+```{r Task2.2}
+out <- r.alpha.normal(10^3, x, delta)
+image(kde2d(out$Alpha[,1],out$Alpha[,2], n = 50))
+```
+
+Notice that a total of `r out$n.iter` iterations were required in order to produce 1,000 simulations from the posterior distribution. 
+
+The initial value of the bound on the difference between the actual (log) density and a (log) density of the proposals was 
+`r round(out$c.est[1],2)` The final estimated bound was `r round(out$c.est[2],2)`.
+
+
+# Task 3
+In Task 3 we implement the same algorithm as in Task 2. The only difference is the proposal density. In the current task we use independent Exponential proposals instead of the Gaussian distribution.
+
+```{r Task3.1}
+lambda <- -c(sum(log(x)),sum(log(1-x))) + delta
+r.alpha.exp <- function(n, x, delta,
+                           n.initial.c = 100, max.iter = 10^6,
+                           l = c(0,0), u = c(Inf,Inf)){
+  # Computing the rates for the Exponential proposals
+  lambda <- -c(sum(log(x)),sum(log(1-x))) + delta
+  
+  # The (log) joint-Exponential density
+  exp.log.g <- function(alpha,lambda){
+    return(sum(dexp(alpha, rate = lambda, log = TRUE)))
+  }
+
+  # Producing an initial estimate of c
+  al <- matrix(rexp(2*n.initial.c, rate = lambda),
+               ncol = 2, byrow = TRUE)
+  f <- apply(al, 1, function(al) log.lik(x, al, delta))
+  g <- apply(al, 1, function(al) exp.log.g(al,lambda))
+  c.est <- initial.c <- max(f - g)
+
+  Alpha <- matrix(NA,n,2)
+  n.iter <- 0
+  for(i in 1:n){
+    accept <- FALSE
+    while((!accept) & (n.iter < max.iter)){
+      al <- rexp(2, rate = lambda)
+      if (all(al > l) & all(al < u)){
+        f <- log.lik(x, al, delta)
+        g <- exp.log.g(al,lambda)
+        e <- -rexp(1)
+        accept <- e <= f - g - c.est
+        c.est <- max(c.est, f - g)
+      }
+      n.iter <- n.iter + 1
+      if (n.iter %% round(max.iter/4) == 0) print (c(n.iter,i,c.est))
+      if (n.iter >= max.iter)
+        warning(paste("Reached max.ietr = ", max.iter,
+                   ". Number of simulations = ", i, sep = ""))
+    }
+    #    print(c(n.iter, c.est, al))
+    Alpha[i,] <- al
+  }
+  c.est = c(initial.c, c.est)
+  names(c.est) <- c("initial", "final")
+  return(list(Alpha = Alpha,
+              c.est = c.est,
+              n.iter = n.iter))
+}
+```
+
+Let us demonstrate the application of the function `r.alpha.exp` with the same data: `
+```{r Task3.2}
+out <- r.alpha.exp(10^3, x, delta)
+```
+Observe that the algorithm was terminated before completing the task of producing 1,000 simulations. As a matter of fact, only `r out$n.iter` simulated values were produced. Notice also the large discrepancy between the initial estimated supreme (`r round(out$c.est[1],2)`) and the final estimated value (`r round(out$c.est[2],2)`),
+
+
+# Task 4
+In hindsight the fact that an algorithm that uses independent exponantials does not work should come as no surprise. Consider the the joint density of the proposals:
+```{r task4.1}
+lambda <- -c(sum(log(x)),sum(log(1-x))) + delta
+al <- matrix(rexp(2000, rate = lambda),
+               ncol = 2, byrow = TRUE)
+image(kde2d(al[,1],al[,2], n = 50))
+```
+This density is far removed from the target posterior density. Hence, using this distribution for proposals leads to a very inefficient algorithm. 
+
+
+## Task 5
+The final task involves the assessment of the Gaussian approximation of the posterior distribution. We consider 4 sample sizes and 3 combinations of alpha values. (The parameter $\alpha_1 = 5$ in all the combinations $(\alpha_1,\alpha_2)$). For each combination of sample size and alpha value a simulation of 1,000 repeats was conducted and a one-sample Hotelling test was carried out in order to examine the difference between the expectation of the posterior distribution and the expectation of the Gaussian approximation: 
+```{r Task5.1}
+n <- c(50,100,500,1000)
+al2 <- c(1,5, 10)
+Mean.P.val <- matrix(NA,length(n),length(al2))
+colnames(Mean.P.val) <- paste("(5,", al2,")",sep="")
+rownames(Mean.P.val) <- paste("sample = ", n,sep="")
+N.iter <- Mean.Dist <- Mean.P.val
+
+for(i in seq(n)) for(j in seq(al2)){
+  x <- rbeta(n[i],5,al2[j])
+  alpha.hat <- fit_dirichlet(cbind(x,1-x))$alpha
+  delta <- 1/alpha.hat
+  out <- r.alpha.normal(10^3, x, delta)
+  m.l <- max.log.lik(x, delta)
+  ht <- OneSampleHT2(out$Alpha, m.l$alpha.hat)
+  Mean.P.val[i,j] <- ht$p.val
+  Mean.Dist[i,j] <- sqrt(ht$HT2)
+  N.iter[i,j] <- out$n.iter
+}
+```
+
+The Hotelling distance between the expectations is given in the next table:
+```{r Task5.2}
+round(Mean.Dist,2)
+```
+Notice that the distance decreases with the increase in sample size.
+
+The p-values for the significance of the differences are:
+```{r Task5.3}
+round(Mean.P.val,4)
+```
+Notice that for larger sample sizes the distances tend not to be statistically significant. 
+
+Lastly, the efficiency of the simulation method can be assessed by considering the number of iterations that are required in order to produce 1,000 simulations:
+```{r Task5.4}
+N.iter
+```
+Clearly, the closed the posterior distribution is to the Gaussian approximation the algorithm becomes more efficient.
+
+The last experiment involves a nonparametric test of the posterior distribution coming from the Gaussian family. Due to the long running time for this test we consider only a single case that involves a relatively small sample size:
+```{r Task5.5}
+x <- rbeta(n[1],5,al2[1])
+alpha.hat <- fit_dirichlet(cbind(x,1-x))$alpha
+delta <- 1/alpha.hat
+out <- r.alpha.normal(10^3, x, delta)
+AD.test(out$Alpha)
+```

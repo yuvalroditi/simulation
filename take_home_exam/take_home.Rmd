@@ -8,46 +8,21 @@ date: '2023-07-18'
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
-
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
-```
-
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
-```
-
 ```{}
 install.packages("DirichletReg")
 install.packages("scatterplot3d") # Install
 install.packages("MASS")
 install.packages("MCMCprecision")
+install.packages("ggpubr")
 
-
+library(ggpubr)
+library(cowplot)
 require(MCMCprecision)
 library(Formula)
 library(DirichletReg)
 library("scatterplot3d") # load
 library(MASS)
 
-
-# beta_func <- function(alphas){
-#   alphas_gamma_sum <- gamma(sum(alphas))
-#   alphas_gamma_mul <-1
-#   for (i in 1:length(alphas)){
-#     alphas_gamma_mul <- alphas_gamma_mul * gamma(alphas[i])
-#   }
-#   return(alphas_gamma_mul/alphas_gamma_sum)
-# }
 
 # obs_amount <- dim(observations)[1]
   # alphas <- t(replicate(obs_amount, prior_sampler(rates)))
@@ -63,15 +38,8 @@ library(MASS)
   # )
   # maximal <-df[which.max(df$z),3]
   # return(df)
-
-```
-
-
-Question 1
-
-```{r pressure, echo=FALSE}
-
-
+  
+  
 # auxiliary functions
 log.lik.dir <- function(X, alpha, delta){
   l <- DirichletReg::ddirichlet(X, alpha, log = TRUE)
@@ -122,14 +90,13 @@ sim.dir <- function(n, alpha_prior, obs){
   A <- MASS::mvrnorm(n, mu, Sigma)
   return(A)
 }
+print(sim.dir(20, c(0.1,0.2,0.15), mat))
+```
 
 
-prior_sampler <-function(rates){
-  k <- length(rates)
-  prior_vec <- rexp(k, rates)
-  return(prior_vec)
-}
+Question 1
 
+```{r pressure, echo=FALSE}
 objective <- function(observations, rates, alphas){
   log_likelihood <- sum(ddirichlet(observations, alphas, log = TRUE))
   log_priors <- sum(dexp(rates, log = TRUE))
@@ -137,7 +104,7 @@ objective <- function(observations, rates, alphas){
   return (log_posterior)
 }
   
-hessian <- function(alphas, n){
+obj_hessian <- function(alphas, n){
   k <- length(alphas)
   h <- (-n)*(diag(trigamma(alphas)) + matrix(-trigamma(sum(alphas)), 
                                                    nrow = k, ncol = k))
@@ -157,9 +124,8 @@ opt <- function(observations, rates, tol = 0.001, max_iter = 1000){
   diff <- Inf
   for(i in 1:max_iter){
     if (diff > tol){
-      print(i)
       n <- dim(observations)[1]
-      H <- solve(hessian(alpha_t, n))
+      H <- solve(obj_hessian(alpha_t, n))
       g <- grad(observations, rates, alpha_t)
       alpha_t <- as.vector(alpha_t - H %*% g) 
       f_new <- objective(observations, rates, alpha_t)
@@ -175,28 +141,170 @@ normal_est <- function(observations, rates){
   alphas <- opt(observations, rates)
   mean <- alphas
   n <- dim(observations)[1]
-  h <- hessian(alphas, n)
+  h <- obj_hessian(alphas, n)
   cov_mat <- ginv(-h)
-  return(list(mean, cov_mat))
+  return(list(mean = mean, sigma = cov_mat, hess = h))
 }
 
 
 q1 <-function(n, observations, rates){
   estimators <- normal_est(observations, rates)
-  mean <- unlist(estimators[1])
-  print(mean)
+  mean <- estimators$mean
   k <- length(mean)
-  cov_mat <- matrix(unlist(estimators[2]), ncol = k, nrow=k)
-  print(cov_mat)
+  cov_mat <- estimators$sigma
+  #cov_mat <- matrix(unlist(estimators[2]), ncol = k, nrow=k)
   samples <- mvrnorm(n, mean, cov_mat)
   return (samples)
 }
 mat <- as.matrix(read.table("Q3.txt.Q", sep=" "))
-# mat <- matrix(c(0.2,0.3,0.2,0.1,0.2,0.3,0.4,0.4,0.1,0.1,0.1,0.8), nrow=4, ncol=3)
 print(q1(20, mat, c(0.1,0.2,0.15)))
-
-
-print(sim.dir(20, c(0.1,0.2,0.15), mat))
 #scatterplot3d(df$x, df$y, df$z)
 ```
+Question 2
+```{r pressure, echo=FALSE}
+q2 <- function(n, x, delta,
+                           n.initial.c = 100,
+                           max.iter = 10^8
+                           ){
+  # Estimating the mu and Sigma for the Gaussian proposals
+  k <- length(delta)
+  lower <- numeric(k)
+  upper <- numeric(k) + Inf
+  out <- normal_est(x, delta)
+  print(out)
+  mu <- out$mean
+  Sigma <- out$sigma
+  P <- -out$hess
+  d <- 0.5*log(det(P)) - log(2*pi)
+  
+  # The (log) Gaussian density
+  normal.log.g <- function(alpha, mu, P, d){
+    -0.5 * drop(t(alpha-mu) %*% P %*% (alpha-mu)) + d
+  }
 
+  # Producing an initial estimate of c
+  al <- mvrnorm(n.initial.c,mu,Sigma)
+  f <- apply(al, 1, function(al) objective(x, delta, al))
+  g <- apply(al, 1, function(al) normal.log.g(al,mu,P,d))
+  c.est <- initial.c <- max(f - g)
+
+  Alpha <- matrix(NA,n,k)
+  n.iter <- 0
+  for(i in 1:n){
+    accept <- FALSE
+    print(i)
+    while((!accept) & (n.iter < max.iter)){
+      al <- mvrnorm(1,mu,Sigma)
+      if (all(al > lower) & all(al < upper)){
+        f <- objective(x, delta, al)
+        g <- normal.log.g(al,mu,P,d)
+        e <- -rexp(1)
+        accept <- e <= f - g - c.est
+        c.est <- max(c.est, f - g)
+      }
+      n.iter <- n.iter + 1
+      if (n.iter %% round(max.iter/4) == 0) print (c(n.iter,i,c.est))
+      if (n.iter >= max.iter)
+        stop(paste("Reached max.ietr = ", max.iter,
+                    ". Number of simulations = ", i, sep = ""))
+    }
+#    print(c(n.iter, c.est, al))
+    Alpha[i,] <- al
+  }
+  c.est = c(initial.c, c.est)
+  names(c.est) <- c("initial", "final")
+  return(list(Alpha = Alpha,
+              c.est = c.est,
+              n.iter = n.iter))
+}
+```
+
+```{r Task2.2}
+alpha <- c(0.1)
+delta <- 1/c(6,10)
+X <- as.matrix(read.table("Q3.txt.Q", sep=" "))
+
+
+out <- q2(10^3, X, delta)
+image(kde2d(out$Alpha[,1],out$Alpha[,2], n = 50))
+```
+```{r Question 3 - k=2}
+# X <- as.matrix(read.table("Q3.txt.Q", sep=" "))
+X <- rdirichlet(20, c(0.1,0.4,0.8))
+rates <- c(5,30,100)
+q1_alphas <- q1(1000, X, rates)
+q2_alphas <- q2(1000, X, rates)$Alpha
+
+```
+```{r k=2}
+par(mfrow=c(1,2))
+image(kde2d(q1_alphas[,1],q1_alphas[,2], n = 100),
+      main="Gaussian approximation - Task1",
+      xlim=range(q1_alphas[,1]),
+      ylim=range(q1_alphas[,2]))
+image(kde2d(q2_alphas[,1],q2_alphas[,2], n = 100), main="Rejection Method approximation - Task2",
+      xlim=range(q1_alphas[,1]),
+      ylim=range(q1_alphas[,2]))
+```
+```{r}
+set.seed(1234)
+wdata = data.frame(
+  sex = factor(rep(c("F", "M"), each=200)),
+  weight = c(rnorm(200, 55), rnorm(200, 58)))
+head(wdata)
+gghistogram(
+  wdata, x = "weight", 
+  add = "mean", rug = TRUE,
+  fill = "sex", palette = c("#00AFBB", "#E7B800")
+  )
+
+```
+```{r k=1}
+for (x_size in list(1000,2000,4000)){
+  rates <- c(1,2)
+  X <- rdirichlet(x_size, rates)
+  q1_alphas <- q1(50, X, rates)
+  q2_alphas <- q2(50, X, rates)$Alpha
+  q1_df <- data.frame(alpha = q1_alphas[,1])
+  q1_df$approximation <- "Guassian_Task1"
+  q2_df <- data.frame(alpha = q2_alphas[,1])
+  q2_df$approximation <- "Rejection_Task2"
+  df <- rbind(q1_df, q2_df)
+  print(df)
+  p <- gghistogram(
+  df, x = "alpha", y = "..density..",
+  add = "mean", rug = TRUE,
+  fill = "approximation", palette = c("#00AFBB", "#E7B800"),
+  add_density = TRUE
+  )
+  print(p)
+}
+```
+
+```{r k=2}
+for (x_size in list(1000,2000,4000)){
+  rates <- c(1,2)
+  X <- rdirichlet(x_size, rates)
+  q1_alphas <- q1(50, X, rates)
+  q2_alphas <- q2(50, X, rates)$Alpha
+  
+  x_range<- range(c(q1_alphas[,1], q2_alphas[,1]))
+  x_range[1] <- x_range[1] - 0.01
+  x_range[2] <- x_range[2] + 0.01
+  y_range<- range(c(q1_alphas[,2], q2_alphas[,2]))
+  y_range[1] <- y_range[1] - 0.01
+  y_range[2] <- y_range[2] + 0.01
+  par(mfrow=c(1,2), bg="#FFFFC8")
+  image(kde2d(q1_alphas[,1],q1_alphas[,2], n = 50),
+        main= paste("Gaussian approximation - Task1\n", "X size:", x_size),
+        cex.main= 1,
+        xlim=x_range,
+        ylim=y_range,
+        )
+  image(kde2d(q2_alphas[,1],q2_alphas[,2], n = 50), 
+        main= paste("Rejection Method approximation - Task2\n", "X size:", x_size),
+        cex.main= 1,
+        xlim=x_range,
+        ylim=y_range)
+}
+```
