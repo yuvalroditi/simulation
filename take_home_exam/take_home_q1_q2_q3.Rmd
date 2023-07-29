@@ -8,7 +8,11 @@ date: '2023-07-18'
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{}
+```{r}
+r = getOption("repos")
+r["CRAN"] = "http://cran.us.r-project.org"
+options(repos = r)
+
 install.packages("DirichletReg")
 install.packages("scatterplot3d") # Install
 install.packages("MASS")
@@ -23,81 +27,12 @@ library(Formula)
 library(DirichletReg)
 library("scatterplot3d") # load
 library(MASS)
-
-
-# obs_amount <- dim(observations)[1]
-  # alphas <- t(replicate(obs_amount, prior_sampler(rates)))
-  # likelihood <- ddirichlet(observations, alphas)
-  # priors <- dexp(alphas)
-  # posterior <- numeric(length=obs_amount)
-  # for (i in (1:obs_amount))
-  #   posterior[i] <- prod(alphas[i]) * prod(likelihood[i])
-  # df <- data.frame(
-  #   x = c(alphas[,1]),
-  #   y = c(alphas[,2]),
-  #   z = c(posterior)
-  # )
-  # maximal <-df[which.max(df$z),3]
-  # return(df)
-  
-  
-# auxiliary functions
-log.lik.dir <- function(X, alpha, delta){
-  l <- DirichletReg::ddirichlet(X, alpha, log = TRUE)
-  return(sum(l) - sum(alpha*delta) + sum(log(delta)))
-}
-
-grad.log.lik.dir <- function(X, alpha, delta){
-  term1 <- colSums(log(X))
-  term2 <- nrow(X)*(digamma(sum(alpha))-digamma(alpha))
-  return(term1 + term2 - delta)
-}
-
-hess.log.lik.dir <- function(X, alpha, delta){
-  term1 <- trigamma(sum(alpha))*matrix(1,length(alpha),length(alpha))
-  term2 <- diag(trigamma(alpha))
-  return(nrow(X)*(term1 - term2))
-}
-
-max.log.lik.dir <- function(X, delta, precision = 0.001, max.iter = 100){
-  al <- fit_dirichlet(X)$alpha # Initiate
-  iter <- d <- 1
-  while ((d > precision) & (iter <= max.iter)){
-    l <- log.lik.dir(X, al, delta)
-    W <- solve(hess.log.lik.dir(X, al, delta))
-    v <- grad.log.lik.dir(X, al, delta)
-    al <- as.vector(al - W %*% v)
-    d <- abs(log.lik.dir(X, al, delta)-l)
-    iter <- iter + 1
-  }
-  if(iter >= max.iter) warning("Stopped before convergence")
-  return(list(alpha.hat = al,
-              log.lik.hat = log.lik.dir(X, al, delta),
-              gradient = v,
-              hessian = hess.log.lik.dir(X, al, delta),
-              number.iter = iter,
-              log.lik.dif = d))
-}
-
-# Producing the Gaussian approximation
-sim.dir <- function(n, alpha_prior, obs){
-  #delta <- 1/alpha_prior
-  delta <- alpha_prior
-  out <- max.log.lik.dir(obs, delta)
-  print(out)
-  mu <- out$alpha.hat
-  print(-solve(out$hessian))
-  Sigma <- -solve(out$hessian)
-  A <- MASS::mvrnorm(n, mu, Sigma)
-  return(A)
-}
-print(sim.dir(20, c(0.1,0.2,0.15), mat))
 ```
 
 
 Question 1
 
-```{r pressure, echo=FALSE}
+```{r Question 1, echo=FALSE}
 objective <- function(observations, rates, alphas){
   log_likelihood <- sum(ddirichlet(observations, alphas, log = TRUE))
   log_priors <- sum(dexp(rates, log = TRUE))
@@ -158,12 +93,10 @@ q1 <-function(n, observations, rates){
   samples <- mvrnorm(n, mean, cov_mat)
   return (samples)
 }
-mat <- as.matrix(read.table("Q3.txt.Q", sep=" "))
-print(q1(20, mat, c(0.1,0.2,0.15)))
-#scatterplot3d(df$x, df$y, df$z)
 ```
+
 Question 2
-```{r pressure, echo=FALSE}
+```{r Question 2, echo=FALSE}
 q2 <- function(n, x, delta,
                            n.initial.c = 100,
                            max.iter = 10^8
@@ -173,7 +106,6 @@ q2 <- function(n, x, delta,
   lower <- numeric(k)
   upper <- numeric(k) + Inf
   out <- normal_est(x, delta)
-  print(out)
   mu <- out$mean
   Sigma <- out$sigma
   P <- -out$hess
@@ -194,7 +126,6 @@ q2 <- function(n, x, delta,
   n.iter <- 0
   for(i in 1:n){
     accept <- FALSE
-    print(i)
     while((!accept) & (n.iter < max.iter)){
       al <- mvrnorm(1,mu,Sigma)
       if (all(al > lower) & all(al < upper)){
@@ -210,7 +141,6 @@ q2 <- function(n, x, delta,
         stop(paste("Reached max.ietr = ", max.iter,
                     ". Number of simulations = ", i, sep = ""))
     }
-#    print(c(n.iter, c.est, al))
     Alpha[i,] <- al
   }
   c.est = c(initial.c, c.est)
@@ -221,73 +151,8 @@ q2 <- function(n, x, delta,
 }
 ```
 
-```{r Task2.2}
-alpha <- c(0.1)
-delta <- 1/c(6,10)
-X <- as.matrix(read.table("Q3.txt.Q", sep=" "))
-
-
-out <- q2(10^3, X, delta)
-image(kde2d(out$Alpha[,1],out$Alpha[,2], n = 50))
-```
-```{r Question 3 - k=2}
-# X <- as.matrix(read.table("Q3.txt.Q", sep=" "))
-X <- rdirichlet(20, c(0.1,0.4,0.8))
-rates <- c(5,30,100)
-q1_alphas <- q1(1000, X, rates)
-q2_alphas <- q2(1000, X, rates)$Alpha
-
-```
-```{r k=2}
-par(mfrow=c(1,2))
-image(kde2d(q1_alphas[,1],q1_alphas[,2], n = 100),
-      main="Gaussian approximation - Task1",
-      xlim=range(q1_alphas[,1]),
-      ylim=range(q1_alphas[,2]))
-image(kde2d(q2_alphas[,1],q2_alphas[,2], n = 100), main="Rejection Method approximation - Task2",
-      xlim=range(q1_alphas[,1]),
-      ylim=range(q1_alphas[,2]))
-```
-```{r}
-set.seed(1234)
-wdata = data.frame(
-  sex = factor(rep(c("F", "M"), each=200)),
-  weight = c(rnorm(200, 55), rnorm(200, 58)))
-head(wdata)
-gghistogram(
-  wdata, x = "weight", 
-  add = "mean", rug = TRUE,
-  fill = "sex", palette = c("#00AFBB", "#E7B800")
-  )
-
-```
-```{r k=3}
-for (x_size in list(1000,2000,4000)){
-  rates <- c(1,3,5)
-  
-  X <- rdirichlet(x_size, rates)
-  q1_alphas <- q1(50, X, rates)
-  q2_alphas <- q2(50, X, rates)$Alpha
-  q1_df <- data.frame(q1_alphas)
-  q1_df$approximation <- "Guassian_Task1"
-  q2_df <- data.frame(q2_alphas)
-  q2_df$approximation <- "Rejection_Task2"
-  df <- rbind(q1_df, q2_df)
-  par(mfrow=c(1,3))
-  graphs <- list()
-  for (i in 1:3){
-    p <- gghistogram(
-    df, x = paste("X", i, sep=""), y = "..density..",
-    add = "mean", rug = TRUE,
-    fill = "approximation", palette = c("#00AFBB", "#E7B800"),
-    add_density = TRUE)
-    graphs <- append(graphs, p)
-  }
-  do.call(grid.arrange, graphs)
-}
-```
-
-```{r k=2}
+Question 3
+```{r k=2, echo = FALSE}
 for (x_size in list(1000,2000,4000)){
   rates <- c(1,2)
   X <- rdirichlet(x_size, rates)
@@ -313,4 +178,72 @@ for (x_size in list(1000,2000,4000)){
         xlim=x_range,
         ylim=y_range)
 }
+```
+```{r}
+rates <- c(1,3,5)
+X <- rdirichlet(1000, rates)
+q1_alphas <- q1(50, X, rates)
+q2_alphas <- q2(50, X, rates)$Alpha
+q1_df <- data.frame(q1_alphas)
+q1_df$approximation <- "Guassian_Task1"
+q2_df <- data.frame(q2_alphas)
+q2_df$approximation <- "Rejection_Task2"
+df <- rbind(q1_df, q2_df)
+```
+
+```{r k=3, echo = FALSE}
+install.packages("ggplot2")
+library(ggplot2)
+library(ggpubr)
+
+# Create the first ggplot
+library(ggplot2)
+install.packages("gridExtra")  # Install the package (only needed once)
+library(gridExtra)
+
+install.packages("plyr")
+  library(plyr)
+
+for (x_size in list(100,1000,10000)){
+  rates <- c(1,3,5)
+  X <- rdirichlet(x_size, rates)
+  q1_alphas <- q1(50, X, rates)
+  q2_alphas <- q2(50, X, rates)$Alpha
+  q1_df <- data.frame(q1_alphas)
+  q1_df$approximation <- "Guassian_Task1"
+  q2_df <- data.frame(q2_alphas)
+  q2_df$approximation <- "Rejection_Task2"
+  df <- rbind(q1_df, q2_df)
+  
+  mu1 <- ddply(df, "approximation", summarise, grp.mean=mean(X1))
+  p1 <- ggplot(df, aes(x = X1, color=approximation, fill=approximation)) +
+    geom_histogram(alpha=0.3) +
+    geom_density(alpha=0.1)+
+    geom_vline(data=mu1, aes(xintercept=grp.mean, color=approximation), linetype="dashed") + 
+     theme(aspect.ratio = 1) +
+    labs(title = "Alpha1")
+
+  mu2 <- ddply(df, "approximation", summarise, grp.mean=mean(X2))
+  p2 <- ggplot(df, aes(x = X2, color=approximation, fill=approximation)) +
+    geom_histogram(alpha=0.3) +
+    geom_density(alpha=0.1)+
+    geom_vline(data=mu2, aes(xintercept=grp.mean, color=approximation), linetype="dashed") + 
+    theme(aspect.ratio = 1) +
+    labs(title = "Alpha2")
+
+  mu3 <- ddply(df, "approximation", summarise, grp.mean=mean(X3))
+  p3 <- ggplot(df, aes(x = X3, color=approximation, fill=approximation)) +
+    geom_histogram(alpha=0.3) +
+    geom_density(alpha=0.1)+
+    geom_vline(data=mu3, aes(xintercept=grp.mean, color=approximation), linetype="dashed") + 
+    theme(aspect.ratio = 1) +
+    labs(title = "Alpha3")
+  combined <- ggarrange(p1, p2, p3, ncol=3, nrow=1, common.legend = TRUE, legend="bottom")
+  print(combined)
+}
+```
+
+Question 4
+```{r read data, echo = FALSE}
+
 ```
