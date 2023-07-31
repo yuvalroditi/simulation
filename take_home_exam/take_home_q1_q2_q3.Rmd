@@ -125,6 +125,9 @@ q2 <- function(n, x, delta,
   Alpha <- matrix(NA,n,k)
   n.iter <- 0
   for(i in 1:n){
+    if (i%%100 == 0){
+      print(i)
+    }
     accept <- FALSE
     while((!accept) & (n.iter < max.iter)){
       al <- mvrnorm(1,mu,Sigma)
@@ -232,37 +235,60 @@ for (x_size in list(100,1000,10000)){
 }
 ```
 ```{r numerical comparsion}
-set.seed(123)
-data <- rnorm(10000000, mean = 0, sd = 1)
-
-# Define the theoretical distribution function (Gaussian)
-theoretical_distribution <- function(x) {
-  pnorm(x, mean = mean(data), sd = sd(data))
+samples_sizes <- list(64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536)
+ks_results <- matrix(ncol = 0, nrow=length(samples_sizes))
+for (k in 2:5){
+  print(k)
+  results_per_k <- c()
+  for (x_size in samples_sizes){
+    print(paste("x_size", x_size))
+    rates <- numeric(k)+5
+    X <- rdirichlet(x_size, rates)
+    q1_alphas <- q1(200, X, rates)
+    q2_alphas <- q2(200, X, rates)$Alpha
+    
+    ks_result <- ks.test(q1_alphas, q2_alphas)
+    results_per_k <- append(results_per_k, ks_result$p.value)
+  }
+  ks_results <- cbind(ks_results, results_per_k)  
 }
+print(ks_results)
+```
+```{r}
+log_ks_results <- log10(ks_results)
+log_ks_results <- replace(log_ks_results, is.infinite(log_ks_results) & log_ks_results < 0, -16)
+# Generate x values (optional, assuming the matrix represents time points)
+x_values <- 1:nrow(log_ks_results)
 
-# Perform Kolmogorov-Smirnov test
-ks_result <- ks.test(data, theoretical_distribution)
+# Plot all columns in the matrix as line plots
+matplot(x_values, log_ks_results, type = "l", lty = 1, col = 1:ncol(log_ks_results), lwd = 2,
+        xlab = "X-axis Label", ylab = "Y-axis Label", main = "Line Plots for Matrix Columns")
 
-# Print the test result
-print(ks_result)
+# Add a legend to the plot
+legend("bottomright", legend = paste("k=",seq(2,5)), col = 1:ncol(log_ks_results), lty = 1, lwd = 2)
 ```
 Question 4
 ```{r read data, echo = FALSE}
 library(tidyr)
 Q3 <- as.matrix(read.table("Q3.txt.Q", sep=" "))
 Q4 <- as.matrix(read.table("Q4.txt.Q", sep=" "))
-df_3 <- data.frame(Q3)
-df <- gather(df, key="population", value="proportion")
+# df_3 <- data.frame(Q3)
+# df <- gather(df, key="population", value="proportion")
 ```
 
 
 ```{r count non zero}
 Q3_non_zeros <- rowSums(Q3 >= 0.001)
 Q4_non_zeros <- rowSums(Q4 >= 0.001)
+q3_labels <- round(table(Q3_non_zeros)/length(Q3_non_zeros)*100)
+q4_labels <- round(table(Q4_non_zeros)/length(Q4_non_zeros)*100)
+print(q3_labels)
+print(q4_labels)
 par(mfrow=c(1,2))
-pie(table(Q3_non_zeros), main="Q3 non zero elements count")
-pie(table(Q4_non_zeros), main="Q4 non zero elements count")
+pie(table(Q3_non_zeros), main="Q3 non zero elements count", labels = q3_labels)
+pie(table(Q4_non_zeros), main="Q4 non zero elements count", labels = q4_labels)
 ```
+We can see that in both cases the samples are affected by one component of the distribution, although there are 3 or 4 components. Its look like adding the fourth component did not improved the explainability of the data that much.
 ```{r finds similar groups}
 # Decide how many clusters to look at
 n_clusters <- 10
@@ -293,7 +319,6 @@ concated_matrix <- rbind(wss_Q3, wss_Q4)
 wss_df <- data.frame(clusters = as.integer(concated_matrix[,1]),
                      wss = as.integer(concated_matrix[,2]),
                      matrix = concated_matrix[,3])
-print(wss_df)
 scree_plot <- ggplot(wss_df, aes(x = clusters, y = wss, color = matrix)) +
     geom_point(size = 4)+
     geom_line() +
@@ -301,81 +326,54 @@ scree_plot <- ggplot(wss_df, aes(x = clusters, y = wss, color = matrix)) +
     xlab('Number of clusters')
 scree_plot
 ```
+The goal of that plot is to check what is the best k for k-means algorithm. By the elbow method, its look like it is best to select k=3 for Q3 and k=4 for Q4. By choosing k=8 to k=10 the loss is almost 0.
 ```{r}
 install.packages('ggtern')
 library('ggtern')
-clusters <- kmeans(Q3, centers = 3, nstart = 100)$cluster
-clusters <- as.factor(clusters)
-Q3_clusters_df <- data.frame(Q3, clusters)
-# p1 <- ggplot(Q3_clusters_df, aes(x = V1, color=clusters)) +
-#   geom_density(alpha=0.1)+
-#    theme(aspect.ratio = 1) +
-#   labs(title = "Alpha1 clusters")
-# p2 <- ggplot(Q3_clusters_df, aes(x = V2, color=clusters)) +
-#   geom_density(alpha=0.1)+
-#    theme(aspect.ratio = 1) +
-#   labs(title = "Alpha2 clusters")
-# p3 <- ggplot(Q3_clusters_df, aes(x = V3, color=clusters)) +
-#   geom_density(alpha=0.1)+
-#    theme(aspect.ratio = 1) +
-#   labs(title = "Alpha2 clusters")
-# combined <- ggarrange(p1, p2, p3, ncol=3, nrow=1, common.legend = TRUE, legend="bottom")
-
-ggtern(data = Q3_clusters_df, aes(x = V1, y = V2, z = V3, color = clusters)) +
-  geom_point() +
-  labs(title = "K-means clustering with 3 clusters and k=3",
-       x = "Population 1",
-       y = "Population 2",
-       z = "Population 3",
-       color = "Cluster")
-
-
-
-print(combined)
+for (c in list(3,10)){
+  clusters <- kmeans(Q3, centers = c, nstart = 100)$cluster
+  clusters <- as.factor(clusters)
+  Q3_clusters_df <- data.frame(Q3, clusters)
+  g <- ggtern(data = Q3_clusters_df, aes(x = V1, y = V2, z = V3, color = clusters)) +
+    geom_point() +
+    labs(title = paste("K-means clustering with", toString(c) ,"clusters and 3 components of Dirichlet distribution"),
+         x = "Population 1",
+         y = "Population 2",
+         z = "Population 3",
+         color = "Cluster")  
+  print(g)
+}
 ```
+By looking at the trinary graph, its look like there are few different groups with different behaviors and distributions. Although the elbow method suggets to take for k-means k=3, I think it is much more suitable to take k=10. In that way, groups with no contribution in one of the components will attributed to separate cluster than those of affected from all the components like the points in the middle of the triangle. Yet, using k-means is not optimal as the centers are spatial and they separate gorups that suppose to be together like the ones in the left upper edge. 
 
-```{r}
-clusters <- kmeans(Q3, centers = 10, nstart = 100)$cluster
-clusters <- as.factor(clusters)
-Q3_clusters_df <- data.frame(Q3, clusters)
-ggtern(data = Q3_clusters_df, aes(x = V1, y = V2, z = V3, color = clusters)) +
-  geom_point() +
-  labs(title = "K-means clustering with 10 clusters and k=3",
-       x = "Population 1",
-       y = "Population 2",
-       z = "Population 3",
-       color = "Cluster")
-
-
-```
 ```{r distance matrix}
-install.packages("factoextra")
-install.packages("cluster")
-install.packages("magrittr")
-install.packages("dendextend")
-
-library("cluster")
-library("factoextra")
-library("magrittr")
-library("dendextend")
-res.dist <- get_dist(Q3, stand = TRUE, method = "pearson")
-
-fviz_dist(res.dist, 
-   gradient = list(low = "#00AFBB", mid = "white", high = "#FC4E07"))
-```
-```{r}
-res.hc <- Q3 %>%
-  dist(method = "euclidean") %>% # Compute dissimilarity matrix
-  hclust(method = "ward.D2")     # Compute hierachical clustering
-
-# Visualize using factoextra
-# Cut in 4 groups and color by groups
-fviz_dend(res.hc, k = 4, # Cut in four groups
-          cex = 0.5, # label size
-          k_colors = c("#2E9FDF", "#00AFBB", "#E7B800", "#FC4E07"),
-          color_labels_by_k = TRUE, # color labels by groups
-          rect = TRUE # Add rectangle around groups
-          )
+# install.packages("factoextra")
+# install.packages("cluster")
+# install.packages("magrittr")
+# install.packages("dendextend")
+# 
+# library("cluster")
+# library("factoextra")
+# library("magrittr")
+# library("dendextend")
+# # res.dist <- get_dist(Q3, stand = TRUE, method = "pearson")
+# 
+# # fviz_dist(res.dist, 
+# #    gradient = list(low = "#00AFBB", mid = "white", high = "#FC4E07"))
+# ```
+# ```{r}
+# # res.hc <- Q3 %>%
+# #   dist(method = "euclidean") %>% # Compute dissimilarity matrix
+# #   hclust(method = "ward.D2")     # Compute hierachical clustering
+# # 
+# # # Visualize using factoextra
+# # # Cut in 4 groups and color by groups
+# # fviz_dend(res.hc, k = 10, # Cut in four groups
+# #           cex = 0.5, # label size
+# #           k_colors = c("#2E9FDF", "#00AFBB", "#E7B800", "#FC4E07"),
+# #           color_labels_by_k = TRUE, # color labels by groups
+# #           rect = TRUE # Add rectangle around groups
+# #           )
 ```
 ```{r}
 install.packages("fpc")
@@ -383,7 +381,7 @@ install.packages("dbscan")
 library("fpc")
 library("dbscan")
 set.seed(123)
-db <- fpc::dbscan(Q3, eps = 0.08, MinPts = 5)
+db <- fpc::dbscan(Q3, eps = 0.1, MinPts = 5)
 
 # Plot DBSCAN results
 library("factoextra")
@@ -391,6 +389,7 @@ fviz_cluster(db, data = Q3, stand = FALSE,
              ellipse = FALSE, show.clust.cent = FALSE,
              geom = "point",palette = "jco", ggtheme = theme_classic())
 ```
+In this section we try to use DBSCAN in order to find better clusters. The assumption of DBSCAN is that clusters are densed in the space more than other areas in the space. It groups densely grouped data points into single cluster. It performs better on separating the edges to other groups than the points that affected from 2-3 components.
 ```{r spectral clustering}
 install.packages("kernlab")
 library(kernlab)
@@ -407,6 +406,47 @@ g <- ggtern(data = Q3_clusters_df, aes(x = V1, y = V2, z = V3, color = clusters)
        color = "Cluster")  
 print(g)
 ```
+In this section we apply spectral clustering with splinedot kernel. The goal was to find a kernel that separates the best between the zero components group to the the groups that are contributed from all the components. There are real 5 groups (and 3 more groups that catched single dots). This is the best clusters we got up to this point. 
+
+```{r}
+par(mfrow=c(1,3))
+#cluster 1
+x<- Q3_clusters_df[Q3_clusters_df$clusters == 1, ]$V2
+y<- Q3_clusters_df[Q3_clusters_df$clusters == 1, ]$V3
+image(kde2d(x,y, n = 50), main= paste("Cluster 1"), cex.main= 1)
+
+#cluster 2
+x<- Q3_clusters_df[Q3_clusters_df$clusters == 2, ]$V1
+y<- Q3_clusters_df[Q3_clusters_df$clusters == 2, ]$V3
+image(kde2d(x,y, n = 50), main= paste("Cluster 2"), cex.main= 1)
+
+#cluster 4
+x<- Q3_clusters_df[Q3_clusters_df$clusters == 4, ]$V1
+y<- Q3_clusters_df[Q3_clusters_df$clusters == 4, ]$V2
+image(kde2d(x,y, n = 50), main= paste("Cluster 4"), cex.main= 1)
+```
+
+```{r}
+
+#cluster 3
+x<- Q3_clusters_df[Q3_clusters_df$clusters == 3, ]$V1
+y<- Q3_clusters_df[Q3_clusters_df$clusters == 3, ]$V2
+z<- Q3_clusters_df[Q3_clusters_df$clusters == 3, ]$V3
+scatterplot3d(x, y, z, color = "blue", pch = 16, main = "3D Scatter of cluster 3",
+              xlab = "population 1", ylab = "population 2", zlab = "population 3")
+```
+By examine the cluster, we can find 3 kinds of clusters:
+1. One component cluster - affected by one component only (Alpha3 = 0.99998 for example)
+2. Two components cluster. We can see that it is approximately Guassian by looking at the heatmap
+3. Three components cluster. We can see that it is approximately Guassian by looking at the 3DScatterplot
+
+To sum up we had 
+Cluster 5, 8 - one component 
+Clusters 1, 2, 4, 7(small) - two components, approximately Guassian distributed
+cluster 3 - three components, approximately Guassian distributed
+
+So we can say that Q3 composed from 5 major groups, each from specific as mentioned above. 
+
 ```{r}
 install.packages("GGally")
 library(GGally)
@@ -438,6 +478,8 @@ library(klaR)
 library(kernlab)
 set.seed(132) 
 clusters <- specc(Q4, centers = 8, scale=TRUE, kernel="splinedot")
+clusters_fac <- as.factor(clusters)
+Q4_clusters_df <- data.frame(Q4, clusters)
 colors = c("#FF0000", "#808000", "#00FF00", "#00FFFF", "#008080", "#0000FF", "#FF00FF", "#800080")
 par(mfrow=c(2,3))
 for (angle in seq(0,150,30)){
@@ -452,4 +494,5 @@ for (angle in seq(0,150,30)){
            cex=1,
            legend.control = list(plot=FALSE))
 }
+
 ```
