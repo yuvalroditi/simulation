@@ -1,11 +1,14 @@
 ---
 title: '311306435'
 output: pdf_document
+warning: False
 date: '2023-07-18'
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE,
+                      warning = FALSE,
+                      message=FALSE)
 ```
 
 ```{r}
@@ -14,7 +17,7 @@ r["CRAN"] = "http://cran.us.r-project.org"
 options(repos = r)
 
 install.packages("DirichletReg")
-install.packages("scatterplot3d") # Install
+install.packages("scatterplot3d")
 install.packages("MASS")
 install.packages("MCMCprecision")
 install.packages("ggpubr")
@@ -25,7 +28,7 @@ library(cowplot)
 require(MCMCprecision)
 library(Formula)
 library(DirichletReg)
-library("scatterplot3d") # load
+library("scatterplot3d")
 library(MASS)
 ```
 
@@ -155,12 +158,12 @@ q2 <- function(n, x, delta,
 ```
 
 Question 3
-```{r Visual comparsion for k=2, echo = FALSE}
-for (x_size in list(1000,2000,4000)){
+```{r k=2, echo = FALSE}
+for (x_size in list(100,1000,10000)){
   rates <- c(1,2)
   X <- rdirichlet(x_size, rates)
-  q1_alphas <- q1(50, X, rates)
-  q2_alphas <- q2(50, X, rates)$Alpha
+  q1_alphas <- q1(200, X, rates)
+  q2_alphas <- q2(200, X, rates)$Alpha
   
   x_range<- range(c(q1_alphas[,1], q2_alphas[,1]))
   x_range[1] <- x_range[1] - 0.01
@@ -183,24 +186,22 @@ for (x_size in list(1000,2000,4000)){
 }
 ```
 
-```{r visual comparsion for k=3, echo = FALSE}
+```{r k=3, echo = FALSE}
 install.packages("ggplot2")
+install.packages("plyr")
+install.packages("gridExtra")
+
 library(ggplot2)
 library(ggpubr)
-
-# Create the first ggplot
 library(ggplot2)
-install.packages("gridExtra")  # Install the package (only needed once)
 library(gridExtra)
-
-install.packages("plyr")
 library(plyr)
 
 for (x_size in list(100,1000,10000)){
   rates <- c(1,3,5)
   X <- rdirichlet(x_size, rates)
-  q1_alphas <- q1(50, X, rates)
-  q2_alphas <- q2(50, X, rates)$Alpha
+  q1_alphas <- q1(100, X, rates)
+  q2_alphas <- q2(100, X, rates)$Alpha
   q1_df <- data.frame(q1_alphas)
   q1_df$approximation <- "Guassian_Task1"
   q2_df <- data.frame(q2_alphas)
@@ -234,7 +235,7 @@ for (x_size in list(100,1000,10000)){
   print(combined)
 }
 ```
-```{r numerical comparsion}
+```{r numerical comparsion, echo = FALSE}
 samples_sizes <- list(64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536)
 ks_results <- matrix(ncol = 0, nrow=length(samples_sizes))
 for (k in 2:5){
@@ -252,9 +253,8 @@ for (k in 2:5){
   }
   ks_results <- cbind(ks_results, results_per_k)  
 }
-print(ks_results)
 ```
-```{r}
+```{r, echo = FALSE}
 log_ks_results <- log10(ks_results)
 log_ks_results <- replace(log_ks_results, is.infinite(log_ks_results) & log_ks_results < 0, -16)
 # Generate x values (optional, assuming the matrix represents time points)
@@ -272,8 +272,6 @@ Question 4
 library(tidyr)
 Q3 <- as.matrix(read.table("Q3.txt.Q", sep=" "))
 Q4 <- as.matrix(read.table("Q4.txt.Q", sep=" "))
-# df_3 <- data.frame(Q3)
-# df <- gather(df, key="population", value="proportion")
 ```
 
 
@@ -289,7 +287,7 @@ pie(table(Q3_non_zeros), main="Q3 non zero elements count", labels = q3_labels)
 pie(table(Q4_non_zeros), main="Q4 non zero elements count", labels = q4_labels)
 ```
 We can see that in both cases the samples are affected by one component of the distribution, although there are 3 or 4 components. Its look like adding the fourth component did not improved the explainability of the data that much.
-```{r finds similar groups}
+```{r finds similar groups, echo = FALSE}
 # Decide how many clusters to look at
 n_clusters <- 10
 
@@ -301,7 +299,6 @@ set.seed(123)
 
 # Look over 1 to n possible clusters
 for (i in 1:n_clusters) {
-  print(i)
   # Fit the model: km.out
   km_out_Q3 <- kmeans(Q3, centers = i, nstart = 100)
   km_out_Q4 <- kmeans(Q4, centers = i, nstart = 100)
@@ -327,7 +324,7 @@ scree_plot <- ggplot(wss_df, aes(x = clusters, y = wss, color = matrix)) +
 scree_plot
 ```
 The goal of that plot is to check what is the best k for k-means algorithm. By the elbow method, its look like it is best to select k=3 for Q3 and k=4 for Q4. By choosing k=8 to k=10 the loss is almost 0.
-```{r}
+```{r, echo = FALSE}
 install.packages('ggtern')
 library('ggtern')
 for (c in list(3,10)){
@@ -346,7 +343,7 @@ for (c in list(3,10)){
 ```
 By looking at the trinary graph, its look like there are few different groups with different behaviors and distributions. Although the elbow method suggets to take for k-means k=3, I think it is much more suitable to take k=10. In that way, groups with no contribution in one of the components will attributed to separate cluster than those of affected from all the components like the points in the middle of the triangle. Yet, using k-means is not optimal as the centers are spatial and they separate gorups that suppose to be together like the ones in the left upper edge. 
 
-```{r distance matrix}
+```{r distance matrix, echo = FALSE}
 # install.packages("factoextra")
 # install.packages("cluster")
 # install.packages("magrittr")
@@ -375,7 +372,7 @@ By looking at the trinary graph, its look like there are few different groups wi
 # #           rect = TRUE # Add rectangle around groups
 # #           )
 ```
-```{r}
+```{r, echo = FALSE}
 install.packages("fpc")
 install.packages("dbscan")
 library("fpc")
@@ -390,7 +387,7 @@ fviz_cluster(db, data = Q3, stand = FALSE,
              geom = "point",palette = "jco", ggtheme = theme_classic())
 ```
 In this section we try to use DBSCAN in order to find better clusters. The assumption of DBSCAN is that clusters are densed in the space more than other areas in the space. It groups densely grouped data points into single cluster. It performs better on separating the edges to other groups than the points that affected from 2-3 components.
-```{r spectral clustering}
+```{r spectral clustering, echo = FALSE}
 install.packages("kernlab")
 library(kernlab)
 set.seed(127) 
@@ -408,7 +405,7 @@ print(g)
 ```
 In this section we apply spectral clustering with splinedot kernel. The goal was to find a kernel that separates the best between the zero components group to the the groups that are contributed from all the components. There are real 5 groups (and 3 more groups that catched single dots). This is the best clusters we got up to this point. 
 
-```{r}
+```{r, echo = FALSE}
 par(mfrow=c(1,3))
 #cluster 1
 x<- Q3_clusters_df[Q3_clusters_df$clusters == 1, ]$V2
@@ -426,7 +423,7 @@ y<- Q3_clusters_df[Q3_clusters_df$clusters == 4, ]$V2
 image(kde2d(x,y, n = 50), main= paste("Cluster 4"), cex.main= 1)
 ```
 
-```{r}
+```{r, echo = FALSE}
 
 #cluster 3
 x<- Q3_clusters_df[Q3_clusters_df$clusters == 3, ]$V1
@@ -464,12 +461,8 @@ data <- data.frame(
 # Create the scatterplot matrix
 ggpairs(data)
 ```
-```{r}
 
-# clusters <- as.factor(clusters)
-# Q4_clusters_df <- data.frame(Q4, clusters)
-```
-```{r}
+```{r, echo=FALSE}
 install.packages(c("klaR", "scatterplot3d"))
 install.packages("haven")
 library(haven)
@@ -477,7 +470,7 @@ library(klaR)
 
 library(kernlab)
 set.seed(132) 
-clusters <- specc(Q4, centers = 8, scale=TRUE, kernel="splinedot")
+clusters <- specc(Q4, centers = 10, scale=TRUE)
 clusters_fac <- as.factor(clusters)
 Q4_clusters_df <- data.frame(Q4, clusters)
 colors = c("#FF0000", "#808000", "#00FF00", "#00FFFF", "#008080", "#0000FF", "#FF00FF", "#800080")
@@ -495,4 +488,92 @@ for (angle in seq(0,150,30)){
            legend.control = list(plot=FALSE))
 }
 
+```
+
+```{r, echo=FALSE}
+par(mfrow=c(2,3))
+
+#cluster 1
+x<- Q4_clusters_df[Q4_clusters_df$clusters == 1, ]$V1
+y<- Q4_clusters_df[Q4_clusters_df$clusters == 1, ]$V4
+image(kde2d(x,y, n = 50), main= paste("Cluster 1"), cex.main= 1)
+
+#cluster 3
+x<- Q4_clusters_df[Q4_clusters_df$clusters == 3, ]$V2
+y<- Q4_clusters_df[Q4_clusters_df$clusters == 3, ]$V4
+image(kde2d(x,y, n = 50), main= paste("Cluster 3"), cex.main= 1)
+
+#cluster 4
+x<- Q4_clusters_df[Q4_clusters_df$clusters == 4, ]$V1
+y<- Q4_clusters_df[Q4_clusters_df$clusters == 4, ]$V2
+image(kde2d(x,y, n = 50), main= paste("Cluster 4"), cex.main= 1)
+
+#cluster 5
+x<- Q4_clusters_df[Q4_clusters_df$clusters == 5, ]$V3
+y<- Q4_clusters_df[Q4_clusters_df$clusters == 5, ]$V4
+image(kde2d(x,y, n = 50), main= paste("Cluster 5"), cex.main= 1)
+
+#cluster 6
+x<- Q4_clusters_df[Q4_clusters_df$clusters == 6, ]$V3
+y<- Q4_clusters_df[Q4_clusters_df$clusters == 6, ]$V4
+image(kde2d(x,y, n = 50), main= paste("Cluster 6"), cex.main= 1)
+```
+
+```{r, echo=FALSE}
+#cluster 4
+x<- Q4_clusters_df[Q4_clusters_df$clusters == 4, ]$V1
+y<- Q4_clusters_df[Q4_clusters_df$clusters == 4, ]$V2
+z<- Q4_clusters_df[Q4_clusters_df$clusters == 4, ]$V3
+scatterplot3d(x, y, z, color = "blue", pch = 16, main = "3D Scatter of cluster 4",
+              xlab = "population 1", ylab = "population 2", zlab = "population 3")
+```
+
+Like in Q3, we separate to 3 kind of groups
+one component - 8(V3) 7(V1) 9(V2) 10(V4)
+two components - 1, 2, 3, 5, 6
+three components - 4
+
+I contrast to the case of Q3 with 3 dimensions, here the clustering algorithms found it hard to separate the points into groups of 2 dimension and most of them spread over 3 dimensions. It is safe to say that the samples are taken from a mixture of distributions, but here it is harder to say what are the hidden distributions. 
+
+Question 5- Gibbs sampler
+```{r}
+get_initials(X){
+  
+}
+
+q5 <- function(y, x, theta, n.sweep){
+  n < length(x)
+  a1 <- theta[1]
+  a2 <- theta[2]
+  a3 <- theta[3]
+  theta <- data.frame(matrix(nrow=(n.sweep+1), ncol=3))
+  theta[1,1] <- a1
+  theta[1,2] <- a2
+  theta[1,3] <- a3
+
+  rand_a1 <- function(a2, a3) {
+    b_0_mean <- (mu_0/sigma_0 + sum(y-b1*x)/v)/(1/sigma_0 + n/v)
+    b_0_var <- 1/(1/sigma_0+n/v)
+    return(rnorm(1, b_0_mean, sqrt(b_0_var)))
+  }
+
+  rand_a2 <- function(a1, a3){
+    b_1_mean <- (mu_1/sigma_1+sum(x*(y-b0))/v)/(1/sigma_1+sum(x^2/v))
+    b_1_var <- 1/(1/sigma_1 + sum(x^2/v))
+    return(rnorm(1, b_1_mean, sqrt(b_1_var)))
+  }
+
+  rand_a3 <- function(a2, a3){
+    return(1/rgamma(1, shape=(r+n/2), rate=(lambda+sum((y-b0-b1*x)^2/2))))
+  }
+  for (i in 2:(n.sweep+1)) {
+    # compute b0
+    theta[i,1] <- rand_b0(theta[i-1,2], theta[i-1,3])
+    # compute b1
+    theta[i,2] <- rand_b1(theta[i,1], theta[i-1,3])
+    # compute v
+    theta[i,3] <- rand_v(theta[i,1], theta[i,2])
+  }
+  return(theta)
+}
 ```
